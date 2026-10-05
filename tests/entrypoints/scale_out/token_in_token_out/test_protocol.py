@@ -239,3 +239,18 @@ def test_tokens_response_echoes_output_mode_without_text():
     ).model_dump()
     assert dumped["output_mode"] == "tokens"
     assert "text" not in dumped["choices"][0]
+
+
+@pytest.mark.parametrize(
+    "reasoning_parser_kwargs",
+    [{"tokenizer": "x"}, {"chat_template_kwargs": "enable_thinking"}],
+)
+def test_reasoning_parser_kwargs_only_accepts_chat_template_kwargs(
+    reasoning_parser_kwargs,
+):
+    """The engine expands these into its reasoning parser's constructor, so
+    anything but a `chat_template_kwargs` object must be rejected up front."""
+    payload = _base_payload()
+    payload["reasoning_parser_kwargs"] = reasoning_parser_kwargs
+    with pytest.raises(ValidationError, match="reasoning_parser_kwargs"):
+        GenerateRequest.model_validate(payload)

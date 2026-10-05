@@ -275,6 +275,38 @@ async def test_serve_tokens_threads_session_id_header_to_engine():
 
 
 @pytest.mark.asyncio
+async def test_serve_tokens_threads_reasoning_state_to_engine():
+    """The engine needs both fields to gate structured outputs like chat."""
+    engine = _mock_engine()
+
+    async def mock_generate(*args, **kwargs):
+        yield _make_request_output(
+            "req-1", token_ids=[10], finish_reason="stop", finished=True
+        )
+
+    engine.generate = MagicMock(side_effect=mock_generate)
+    serving = _build_serving_tokens(engine)
+    reasoning_parser_kwargs = {"chat_template_kwargs": {"enable_thinking": False}}
+
+    request = GenerateRequest(
+        token_ids=[1, 2, 3],
+        sampling_params=SamplingParams(max_tokens=1),
+        model=MODEL_NAME,
+        stream=False,
+        reasoning_ended=True,
+        reasoning_parser_kwargs=reasoning_parser_kwargs,
+    )
+
+    await serving.serve_tokens(request)
+
+    assert engine.generate.call_args.kwargs["reasoning_ended"] is True
+    assert (
+        engine.generate.call_args.kwargs["reasoning_parser_kwargs"]
+        == reasoning_parser_kwargs
+    )
+
+
+@pytest.mark.asyncio
 async def test_non_stream_error():
     """finish_reason='error' raises for the HTTP exception handler."""
     engine = _mock_engine()

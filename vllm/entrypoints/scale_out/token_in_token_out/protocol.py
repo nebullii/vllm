@@ -266,6 +266,41 @@ class GenerateRequest(BaseModel):
             "ECTransfer parameters used for encoder-cache disaggregated serving."
         ),
     )
+    reasoning_ended: bool | None = Field(
+        default=None,
+        description=(
+            "Whether reasoning has already ended at the start of generation, "
+            "which decides when structured outputs start to be enforced on a "
+            "server with a reasoning parser. True enforces them from the "
+            "first output token, False waits for the model to end reasoning, "
+            "and None lets the server decide from the prompt. Set by /render."
+        ),
+    )
+    reasoning_parser_kwargs: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Arguments for the server's reasoning parser, so that it agrees "
+            "with the one used at render time. Only `chat_template_kwargs` "
+            "is accepted. Set by /render."
+        ),
+    )
+
+    @field_validator("reasoning_parser_kwargs")
+    @classmethod
+    def _validate_reasoning_parser_kwargs(
+        cls, v: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if v is None:
+            return v
+        if unknown := v.keys() - {"chat_template_kwargs"}:
+            raise ValueError(
+                f"Unsupported reasoning_parser_kwargs keys: {sorted(unknown)}"
+            )
+        if not isinstance(v.get("chat_template_kwargs", {}), dict):
+            raise ValueError(
+                "reasoning_parser_kwargs.chat_template_kwargs must be an object"
+            )
+        return v
 
     # Tracks which keys the caller explicitly set inside `sampling_params`
     # when the request was parsed from a JSON body. Lets the server tell

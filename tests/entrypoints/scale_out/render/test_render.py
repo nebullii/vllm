@@ -19,6 +19,7 @@ from vllm.entrypoints.serve.engine.protocol import ErrorResponse
 from vllm.renderers.online_renderer import OnlineRenderer
 
 MODEL_NAME = "hmellor/tiny-random-LlamaForCausalLM"
+REASONING_MODEL_NAME = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
 
 
 def _build_responses_serving_render() -> ServingRender:
@@ -151,6 +152,22 @@ async def client(server):
         yield http_client
 
 
+@pytest.fixture(scope="module")
+def reasoning_server():
+    args = ["--reasoning-parser", "deepseek_r1"]
+
+    with RemoteLaunchRenderServer(REASONING_MODEL_NAME, args) as remote_server:
+        yield remote_server
+
+
+@pytest_asyncio.fixture
+async def reasoning_client(reasoning_server):
+    async with httpx.AsyncClient(
+        base_url=reasoning_server.url_for(""), timeout=30.0
+    ) as http_client:
+        yield http_client
+
+
 @pytest.mark.asyncio
 async def test_responses_render_basic(client):
     response = await client.post(
@@ -279,6 +296,37 @@ async def test_chat_completion_render_basic(client):
     token_ids = data["token_ids"]
     assert all(isinstance(tid, int) for tid in token_ids)
     assert token_ids[0] == 1
+
+    # Without a reasoning parser the engine is left to decide
+    assert data["reasoning_ended"] is None
+    assert data["reasoning_parser_kwargs"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("include_reasoning", "reasoning_ended"),
+    [(True, False), (False, True)],
+)
+async def test_chat_render_resolves_reasoning_state(
+    reasoning_client, include_reasoning, reasoning_ended
+):
+    """/render must hand /generate the same structured-output gate that
+    /v1/chat/completions gives the engine."""
+    response = await reasoning_client.post(
+        "/v1/chat/completions/render",
+        json={
+            "model": REASONING_MODEL_NAME,
+            "messages": [{"role": "user", "content": "What is 2 + 2?"}],
+            "include_reasoning": include_reasoning,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["reasoning_ended"] is reasoning_ended
+    chat_template_kwargs = data["reasoning_parser_kwargs"]["chat_template_kwargs"]
+    assert chat_template_kwargs["enable_thinking"] is False
 
 
 @pytest.mark.asyncio

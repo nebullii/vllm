@@ -223,6 +223,7 @@ class ServingTokens(GenerateBaseServing):
                     sampling_params,
                     request.kv_transfer_params,
                     request.ec_transfer_params,
+                    request.reasoning_parser_kwargs,
                 )
             )
         except (OverflowError, TypeError, ValueError) as e:
@@ -349,6 +350,8 @@ class ServingTokens(GenerateBaseServing):
             priority=request.priority,
             data_parallel_rank=data_parallel_rank,
             session_id=session_id,
+            reasoning_ended=request.reasoning_ended,
+            reasoning_parser_kwargs=request.reasoning_parser_kwargs,
         )
 
         assert result_generator is not None

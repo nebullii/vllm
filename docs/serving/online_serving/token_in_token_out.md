@@ -55,6 +55,15 @@ The server returns a 400 for:
 
 For using `output_mode` with separate prefill and decode pools, see [Disaggregated Prefilling](../../features/disagg_prefill.md#generate-api-output-modes).
 
+## Structured outputs with reasoning
+
+On a server started with `--reasoning-parser`, structured outputs are held back until the model ends reasoning. Two request fields keep that decision the same as on `/v1/chat/completions`:
+
+- `reasoning_ended`: `true` enforces the constraint from the first output token, `false` waits for the model to end reasoning, and `null` (default) lets the server decide from the prompt.
+- `reasoning_parser_kwargs`: the `chat_template_kwargs` the prompt was rendered with (for example `enable_thinking`), passed to the server's reasoning parser.
+
+`/v1/chat/completions/render` and `/v1/messages/render` fill both in, so forward the returned `GenerateRequest` unchanged. Dropping them falls back to the prompt check, which for a request with `include_reasoning: false` lets the model reason unconstrained first.
+
 ## Aborting requests
 
 `POST /inference/v1/abort_requests` aborts in-flight requests. It is registered wherever `/inference/v1/generate` is and requires the API key when `--api-key` is set, like `/inference/v1/generate`.

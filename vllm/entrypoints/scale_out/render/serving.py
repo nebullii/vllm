@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from vllm.entrypoints.anthropic.protocol import AnthropicMessagesRequest
 from vllm.entrypoints.anthropic.serving import AnthropicServingMessages
@@ -25,6 +25,7 @@ from vllm.entrypoints.serve.utils.request_logger import RequestLogger
 from vllm.inputs import EngineInput
 from vllm.logger import init_logger
 from vllm.multimodal.parse import MultiModalDataParser
+from vllm.parser import Parser
 from vllm.renderers.inputs.preprocess import (
     extract_prompt_components,
     extract_prompt_len,
@@ -126,6 +127,26 @@ class ServingRender(BaseServing):
 
         request_id = f"chatcmpl-{random_uuid()}"
 
+        parser: Parser | None = None
+        reasoning_parser_kwargs: dict[str, Any] | None = None
+        parser_cls = self.online_renderer.parser
+        if parser_cls is not None and parser_cls.reasoning_parser_cls is not None:
+            chat_template_kwargs = (
+                request.build_chat_params(
+                    self.online_renderer.chat_template,
+                    self.online_renderer.chat_template_content_format,
+                )
+                .with_defaults(self.online_renderer.default_chat_template_kwargs)
+                .chat_template_kwargs
+            )
+            parser = parser_cls(
+                self.online_renderer.renderer.get_tokenizer(),
+                request.tools,
+                chat_template_kwargs=chat_template_kwargs,
+                model_config=self.model_config,
+            )
+            reasoning_parser_kwargs = {"chat_template_kwargs": chat_template_kwargs}
+
         return GenerateRequest(
             request_id=request_id,
             token_ids=token_ids,
@@ -137,6 +158,8 @@ class ServingRender(BaseServing):
             cache_salt=request.cache_salt,
             priority=request.priority,
             token_offsets=engine_input.get("prompt_token_offsets"),
+            reasoning_ended=request.resolve_reasoning_ended(parser, token_ids),
+            reasoning_parser_kwargs=reasoning_parser_kwargs,
         )
 
     async def render_messages_request(
